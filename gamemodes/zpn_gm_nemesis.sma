@@ -22,7 +22,7 @@ public plugin_precache()
 	zpn_gamemode_set_prop(gamemode, GAMEMODE_PROP_REGISTER_HUD_COLOR, "#ff7456")
 	zpn_gamemode_set_prop(gamemode, GAMEMODE_PROP_REGISTER_CHANCE, 20)
 	zpn_gamemode_set_prop(gamemode, GAMEMODE_PROP_REGISTER_MIN_PLAYERS, 7)
-	zpn_gamemode_set_prop(gamemode, GAMEMODE_PROP_REGISTER_ROUND_TIME, 5.0)
+	zpn_gamemode_set_prop(gamemode, GAMEMODE_PROP_REGISTER_ROUND_TIME, 0.1)
 }
 
 public zpn_user_infected_pre(const this, const infector, const class_id)
