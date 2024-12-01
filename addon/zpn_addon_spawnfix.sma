@@ -2,7 +2,6 @@
 #include <fakemeta>
 #include <reapi>
 
-
 new g_LastSpawnId
 new Array:g_SpawnPoints
 new bool:g_PlayerGodMode[33]
