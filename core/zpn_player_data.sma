@@ -1,4 +1,5 @@
 #include <amxmodx>
+#include <zombie_plague_next>
 #include <zombie_plague_next_const>
 
 enum _:ePropPlayerData
@@ -46,7 +47,7 @@ public client_putinserver(id)
 
 public any:_zpn_player_data_get_prop(plugin_id, param_nums)
 {
-	enum { arg_player = 1, arg_prop, arg_value, arg_len }
+	enum { arg_player = 1, arg_prop }
 
 	new player = get_param(arg_player)
 	new prop = get_param(arg_prop)
@@ -79,7 +80,7 @@ public any:_zpn_player_data_get_prop(plugin_id, param_nums)
 
 public any:_zpn_player_data_set_prop(plugin_id, param_nums)
 {
-	enum { arg_player = 1, arg_prop, arg_value, arg_len }
+	enum { arg_player = 1, arg_prop, arg_value }
 
 	new player = get_param(arg_player)
 	new prop = get_param(arg_prop)
@@ -112,8 +113,11 @@ public any:_zpn_player_data_set_prop(plugin_id, param_nums)
 
 public reset_user_vars(id)
 {
-	xPlayerData[id][PD_PROP_CURRENT_SELECTED_ZOMBIE_CLASS] = 0 //xFirstClass[0]
-	xPlayerData[id][PD_PROP_CURRENT_SELECTED_HUMAN_CLASS] = 0 //xFirstClass[1]
+	new zombie_class = get_first_class(CLASS_TEAM_TYPE_ZOMBIE)
+	new human_class = get_first_class(CLASS_TEAM_TYPE_HUMAN)
+
+	xPlayerData[id][PD_PROP_CURRENT_SELECTED_ZOMBIE_CLASS] = zombie_class != -1 ? zombie_class : 0
+	xPlayerData[id][PD_PROP_CURRENT_SELECTED_HUMAN_CLASS] = human_class != -1 ? human_class : 0
 	xPlayerData[id][PD_PROP_IS_ZOMBIE] = false
 	xPlayerData[id][PD_PROP_IS_FIRST_ZOMBIE] = false
 	xPlayerData[id][PD_PROP_CURRENT_TEMP_ZOMBIE_CLASS] = -1
@@ -125,4 +129,15 @@ public reset_user_vars(id)
 	xPlayerData[id][PD_PROP_CLASS_TIMEOUT] = get_gametime()
 	xPlayerData[id][PD_PROP_LAST_LEAP_TIMEOUT] = get_gametime()
 	xPlayerData[id][PD_PROP_IS_FREEZED] = false
+}
+
+get_first_class(eClassTypes:class_type)
+{
+	for(new i = 0; i < zpn_class_array_size(); i++)
+	{
+		if(zpn_class_get_prop(i, PROP_CLASS_REGISTER_TYPE) == class_type)
+			return i
+	}
+
+	return -1
 }
