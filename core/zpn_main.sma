@@ -295,7 +295,7 @@ public CBasePlayer_ResetMaxSpeed_Pre(const this)
 	if(!zpn_is_valid_player_alive(this))
 		return HC_CONTINUE
 
-	new classTeam = zpn_player_data_get_prop(this, PROP_PD_REGISTER_IS_ZOMBIE) ? zpn_player_data_get_prop(this, PROP_PD_REGISTER_CURRENT_SELECTED_ZOMBIE_CLASS) : zpn_player_data_get_prop(this, PROP_PD_REGISTER_CURRENT_SELECTED_HUMAN_CLASS)
+	new classTeam = get_user_current_class_index(this)
 	
 	new Float:speed = zpn_class_get_prop(classTeam, PROP_CLASS_REGISTER_SPEED)
 	new activeItem = get_member(this, m_pActiveItem)
@@ -519,7 +519,7 @@ public _select_class_type(id, menu, item)
 		zpn_class_get_prop(i, PROP_CLASS_REGISTER_INFO, class_info, charsmax(class_info))
 
 		if(type == class_type && !hide_menu)
-			menu_additem(xMenu, fmt("\w%s \y(\d%s\y)%s", name, class_info, i == get_current_class_index(id, class_type) ? " \r*" : ""), fmt("%d", i))
+			menu_additem(xMenu, fmt("\w%s \y(\d%s\y)%s", name, class_info, i == get_user_selected_class_index(id, class_type) ? " \r*" : ""), fmt("%d", i))
 	}
 
 	menu_setprop(xMenu, MPROP_NEXTNAME, fmt("%L", id, "MORE"))
@@ -646,7 +646,7 @@ public CBasePlayerWeapon_DefaultDeploy_Pre(const ent, szViewModel[], szWeaponMod
 		
 	if(zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE) && get_member(ent, m_iId) == WEAPON_KNIFE)
 	{
-		new class_id = zpn_player_data_get_prop(id, PROP_PD_REGISTER_CURRENT_TEMP_ZOMBIE_CLASS) != -1 ? zpn_player_data_get_prop(id, PROP_PD_REGISTER_CURRENT_TEMP_ZOMBIE_CLASS) : zpn_player_data_get_prop(id, PROP_PD_REGISTER_CURRENT_SELECTED_ZOMBIE_CLASS)
+		new class_id = get_user_current_class_index(id)
 
 		new view[64]
 		zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_MODEL_VIEW, view, charsmax(view))
@@ -1139,6 +1139,9 @@ public plugin_natives()
 	register_native("zpn_set_fw_param_int", "_zpn_set_fw_param_int")
 	register_native("zpn_is_round_started", "_zpn_is_round_started")
 	register_native("zpn_get_user_selected_class", "_zpn_get_user_selected_class")
+	register_native("zpn_get_user_next_class", "_zpn_get_user_next_class")
+	register_native("zpn_get_user_current_class", "_zpn_get_user_current_class")
+	register_native("zpn_is_user_class", "_zpn_is_user_class")
 	register_native("zpn_send_weapon_deploy", "_zpn_send_weapon_deploy")
 	register_native("zpn_set_user_frozen", "_zpn_set_user_frozen")
 	register_native("zpn_is_user_freezed", "_zpn_is_user_freezed")
@@ -1241,25 +1244,70 @@ public bool:_zpn_is_user_zombie_special(plugin_id, param_nums)
 	if(!is_user_connected(id))
 		return false
 
-	new class_id = zpn_player_data_get_prop(id, PROP_PD_REGISTER_CURRENT_TEMP_ZOMBIE_CLASS) != -1 ? zpn_player_data_get_prop(id, PROP_PD_REGISTER_CURRENT_TEMP_ZOMBIE_CLASS) : zpn_player_data_get_prop(id, PROP_PD_REGISTER_CURRENT_SELECTED_ZOMBIE_CLASS)
+	new class_id = get_user_current_class_index(id)
 
-	return (zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE) && zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_TYPE) == CLASS_TEAM_TYPE_ZOMBIE_SPECIAL)
+	return (zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE) && class_id != -1 && zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_TYPE) == CLASS_TEAM_TYPE_ZOMBIE_SPECIAL)
 }
 
 public _zpn_get_user_selected_class(plugin_id, param_nums)
 {
-	if(param_nums != 3)
-		return 0
+	if(param_nums < 2)
+		return -1
 
 	new id = get_param(1)
 
 	if(!is_user_connected(id))
-		return 0
+		return -1
 
 	new eClassTypes:type = eClassTypes:get_param(2)
-	new bool:check_temp = bool:get_param(3)
 
-	return get_current_class_index(id, type, check_temp)
+	if(param_nums >= 3 && bool:get_param(3))
+		return get_user_current_class_index_by_type(id, type)
+
+	return get_user_selected_class_index(id, type)
+}
+
+public _zpn_get_user_next_class(plugin_id, param_nums)
+{
+	if(param_nums != 2)
+		return -1
+
+	new id = get_param(1)
+
+	if(!is_user_connected(id))
+		return -1
+
+	new eClassTypes:type = eClassTypes:get_param(2)
+
+	return get_user_next_class_index(id, type)
+}
+
+public _zpn_get_user_current_class(plugin_id, param_nums)
+{
+	if(param_nums != 1)
+		return -1
+
+	new id = get_param(1)
+
+	if(!is_user_connected(id))
+		return -1
+
+	return get_user_current_class_index(id)
+}
+
+public bool:_zpn_is_user_class(plugin_id, param_nums)
+{
+	if(param_nums != 2)
+		return false
+
+	new id = get_param(1)
+
+	if(!is_user_connected(id))
+		return false
+
+	new class_id = get_param(2)
+
+	return (class_id != -1 && get_user_current_class_index(id) == class_id)
 }
 
 public bool:_zpn_set_user_zombie(plugin_id, param_nums)
@@ -1482,7 +1530,7 @@ public set_user_nv(id)
 
 get_user_nv_color(id, outRgb[3])
 {
-	static class_id; class_id = zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE) ? zpn_player_data_get_prop(id, PROP_PD_REGISTER_CURRENT_SELECTED_ZOMBIE_CLASS) : zpn_player_data_get_prop(id, PROP_PD_REGISTER_CURRENT_SELECTED_HUMAN_CLASS)
+	static class_id; class_id = get_user_current_class_index(id)
 	static nv_color[12]; zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_NV_COLOR, nv_color)
 
 	if(!zpn_is_null_string(nv_color))
@@ -1525,9 +1573,7 @@ get_class_name(const this)
 {
 	static class[64], class_id
 
-	if(zpn_player_data_get_prop(this, PROP_PD_REGISTER_IS_ZOMBIE))
-		class_id = zpn_player_data_get_prop(this, PROP_PD_REGISTER_CURRENT_TEMP_ZOMBIE_CLASS) != -1 ? zpn_player_data_get_prop(this, PROP_PD_REGISTER_CURRENT_TEMP_ZOMBIE_CLASS) : zpn_player_data_get_prop(this, PROP_PD_REGISTER_CURRENT_SELECTED_ZOMBIE_CLASS)
-	else class_id = zpn_player_data_get_prop(this, PROP_PD_REGISTER_CURRENT_TEMP_HUMAN_CLASS) != -1 ? zpn_player_data_get_prop(this, PROP_PD_REGISTER_CURRENT_TEMP_HUMAN_CLASS) : zpn_player_data_get_prop(this, PROP_PD_REGISTER_CURRENT_SELECTED_HUMAN_CLASS)
+	class_id = get_user_current_class_index(this)
 	
 	static class_name[64]; zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_NAME, class_name, charsmax(class_name))
 
@@ -1655,18 +1701,58 @@ count_class(eClassTypes:class_type)
 	return count
 }
 
-get_current_class_index(id, eClassTypes:type, bool:check_temp = false)
+get_user_selected_class_index(id, eClassTypes:type)
 {
-	static ePropPlayerDataRegisters:class_type; class_type = ePropPlayerDataRegisters:0
-
 	switch(type)
 	{
-		case CLASS_TEAM_TYPE_ZOMBIE: class_type = check_temp ? PROP_PD_REGISTER_CURRENT_TEMP_ZOMBIE_CLASS : PROP_PD_REGISTER_CURRENT_SELECTED_ZOMBIE_CLASS
-		case CLASS_TEAM_TYPE_HUMAN: class_type = check_temp ? PROP_PD_REGISTER_CURRENT_TEMP_HUMAN_CLASS : PROP_PD_REGISTER_CURRENT_SELECTED_HUMAN_CLASS
-		default: class_type = PROP_PD_REGISTER_CURRENT_SELECTED_ZOMBIE_CLASS
+		case CLASS_TEAM_TYPE_ZOMBIE: return zpn_player_data_get_prop(id, PROP_PD_REGISTER_CURRENT_SELECTED_ZOMBIE_CLASS)
+		case CLASS_TEAM_TYPE_HUMAN: return zpn_player_data_get_prop(id, PROP_PD_REGISTER_CURRENT_SELECTED_HUMAN_CLASS)
 	}
-	
-	return zpn_player_data_get_prop(id, class_type)
+
+	return -1
+}
+
+get_user_next_class_index(id, eClassTypes:type)
+{
+	switch(type)
+	{
+		case CLASS_TEAM_TYPE_ZOMBIE: return zpn_player_data_get_prop(id, PROP_PD_REGISTER_NEXT_ZOMBIE_CLASS)
+		case CLASS_TEAM_TYPE_HUMAN: return zpn_player_data_get_prop(id, PROP_PD_REGISTER_NEXT_HUMAN_CLASS)
+	}
+
+	return -1
+}
+
+get_user_current_class_index(id)
+{
+	new class_id
+
+	if(zpn_player_data_get_prop(id, PROP_PD_REGISTER_IS_ZOMBIE))
+	{
+		class_id = zpn_player_data_get_prop(id, PROP_PD_REGISTER_CURRENT_TEMP_ZOMBIE_CLASS)
+
+		if(class_id == -1)
+			class_id = zpn_player_data_get_prop(id, PROP_PD_REGISTER_CURRENT_SELECTED_ZOMBIE_CLASS)
+	}
+	else
+	{
+		class_id = zpn_player_data_get_prop(id, PROP_PD_REGISTER_CURRENT_TEMP_HUMAN_CLASS)
+
+		if(class_id == -1)
+			class_id = zpn_player_data_get_prop(id, PROP_PD_REGISTER_CURRENT_SELECTED_HUMAN_CLASS)
+	}
+
+	return class_id
+}
+
+get_user_current_class_index_by_type(id, eClassTypes:type)
+{
+	new class_id = get_user_current_class_index(id)
+
+	if(class_id == -1)
+		return -1
+
+	return zpn_class_get_prop(class_id, PROP_CLASS_REGISTER_TYPE) == type ? class_id : -1
 }
 
 random_gamemode()

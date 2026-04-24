@@ -3,7 +3,8 @@
 #include <zombie_plague_next_const>
 
 new gamemode_infection
-new g_max_helpers, g_helper_count, helper_ckeck[33]
+new g_max_helpers, g_helper_count
+new bool:helper_ckeck[33]
 
 public plugin_init()
 {

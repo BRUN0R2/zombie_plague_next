@@ -27,7 +27,7 @@ public plugin_precache()
 
 public zpn_user_frozen_pre(const this)
 {
-	if(zpn_get_user_selected_class(this, CLASS_TEAM_TYPE_ZOMBIE_SPECIAL) == class_nemesis || zpn_get_user_selected_class(this, CLASS_TEAM_TYPE_ZOMBIE_SPECIAL, true) == class_nemesis)
+	if(zpn_is_user_class(this, class_nemesis))
 		return ZPN_RETURN_HANDLED
 	
 	return ZPN_RETURN_CONTINUE

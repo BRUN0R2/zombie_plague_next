@@ -52,7 +52,7 @@ register_class()
 	zpn_class_set_prop(class, PROP_CLASS_REGISTER_NV_COLOR, "#872dcc")
 }
 
-bool:is_class(id) return (zpn_get_user_selected_class(id, CLASS_TEAM_TYPE_ZOMBIE) == class && zpn_get_user_selected_class(id, CLASS_TEAM_TYPE_ZOMBIE, true) == class);
+bool:is_class(id) return (is_user_alive(id) && zpn_is_user_zombie(id) && !zpn_is_user_zombie_special(id) && zpn_is_user_class(id, class));
 
 public zpn_user_infected_post(const this, const infector, const class_id)
 {
@@ -62,7 +62,7 @@ public zpn_user_infected_post(const this, const infector, const class_id)
 
 public force_bot_skill(id)
 {
-	if(zpn_is_user_zombie(id) && !zpn_is_user_zombie_special(id) && zpn_get_user_selected_class(id, CLASS_TEAM_TYPE_ZOMBIE, true) == class && zpn_is_round_started() && is_user_connected(id))
+	if(zpn_is_user_zombie(id) && !zpn_is_user_zombie_special(id) && zpn_is_user_class(id, class) && zpn_is_round_started() && is_user_connected(id))
 	{
 		create_bat(id)
 		set_task(random_float(10.0, 30.0), "force_bot_skill", id)

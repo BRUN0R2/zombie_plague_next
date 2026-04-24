@@ -21,7 +21,7 @@ new const kick_hit[][] =
 }
 
 new class
-new kick_anim_index, kicking[33]
+new bool:kicking[33]
 
 public plugin_init()
 {
@@ -42,7 +42,10 @@ register_class()
 	zpn_class_set_prop(class, PROP_CLASS_REGISTER_GRAVITY, 0.75)
 }
 
-bool:is_class(id) return (zpn_get_user_selected_class(id, CLASS_TEAM_TYPE_HUMAN) == class && zpn_get_user_selected_class(id, CLASS_TEAM_TYPE_HUMAN, true) == class && is_user_alive(id));
+bool:is_class(id)
+{
+	return (is_user_alive(id) && !zpn_is_user_zombie(id) && zpn_is_user_class(id, class))
+}
 
 public client_putinserver(id)
 {
@@ -214,7 +217,7 @@ public plugin_precache()
 	register_class()
 
 	precache_model(kick)
-	kick_anim_index = precache_model(kick_anim)
+	precache_model(kick_anim)
 	precache_sound(kick_miss)
 
 	for(new i = 0; i < sizeof(kick_hit); i++)
@@ -234,7 +237,7 @@ speed_vector(const Float:origin1[3], const Float:origin2[3], Float:speed, Float:
 	new_velocity[2] *= (num)
 }
 
-set_ent_anim(ent, anim, Float:framerate, bool:reset = false)
+stock set_ent_anim(ent, anim, Float:framerate, bool:reset = false)
 {
 	if(is_nullent(ent))
 		return
@@ -247,13 +250,13 @@ set_ent_anim(ent, anim, Float:framerate, bool:reset = false)
 		set_entvar(ent, var_frame, 0.0)
 }
 
-rg_set_user_invisibility(const id, bool:bToggle = true)
+stock rg_set_user_invisibility(const id, bool:bToggle = true)
 {
 	new eff = get_entvar(id,var_effects)
 	set_entvar(id, var_effects, bToggle ? (eff |= EF_NODRAW) : (eff &= ~EF_NODRAW))
 }
 
-math_mins_maxs(const Float:mins[3], const Float:maxs[3], Float:size[3])
+stock math_mins_maxs(const Float:mins[3], const Float:maxs[3], Float:size[3])
 {
 	size[0] = (xs_fsign(mins[0]) * mins[0]) + maxs[0]
 	size[1] = (xs_fsign(mins[1]) * mins[1]) + maxs[1]

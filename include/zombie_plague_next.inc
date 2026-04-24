@@ -85,9 +85,24 @@ native any:zpn_class_get_prop(const class_id, ePropClassRegisters:prop, any:...)
 native zpn_class_set_prop(const class_id, ePropClassRegisters:prop, any:...);
 
 /*
-* Get current user selected class by type
+* Get user selected class by type
 */
-native zpn_get_user_selected_class(const id, eClassTypes:type, bool:check_temp = false);
+native zpn_get_user_selected_class(const id, eClassTypes:type);
+
+/*
+* Get user queued class by type
+*/
+native zpn_get_user_next_class(const id, eClassTypes:type);
+
+/*
+* Get user current applied class
+*/
+native zpn_get_user_current_class(const id);
+
+/*
+* Returns true when class_id is the user current applied class
+*/
+native bool:zpn_is_user_class(const id, const class_id);
 
 /*
 * Returns class_id >= 0 if found or -1 if not found
