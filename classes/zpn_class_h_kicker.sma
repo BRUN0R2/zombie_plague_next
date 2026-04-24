@@ -2,9 +2,7 @@
 #include <fakemeta>
 #include <cstrike>
 #include <engine>
-#include <xs>
 #include <reapi>
-#include <hamsandwich>
 #include <zombie_plague_next>
 #include <zombie_plague_next_const>
 
@@ -13,6 +11,11 @@ new const kick_anim[] = "models/zpn/kick_anim.mdl"
 new const kick_miss[] = "zpn/kick_miss.wav"
 
 new const Float:anim_time = 0.75
+new const Float:kick_anim_framerate = 2.0
+new const Float:kick_anim_floor_offset = 39.5
+
+new const kick_anim_classname[] = "zpn_kick_anim"
+new const kick_fake_classname[] = "zpn_kick_fake_player"
 
 new const kick_hit[][] =
 {
@@ -20,15 +23,35 @@ new const kick_hit[][] =
 	"zpn/kick_hit2.wav",
 }
 
-new class
+enum _:eCvars
+{
+	CVAR_BLOCK_MOVE
+}
+
+new class, kick_anim_index
+new cvars[eCvars]
 new bool:kicking[33]
+new kick_anim_player[33]
+new kick_fake_player[33]
+new camera_users_xvar = -1
 
 public plugin_init()
 {
 	register_plugin("[ZPN] Class: Human Kicker", "1.0", "Wilian M.")
 
 	register_forward(FM_CmdStart, "@CmdStart_Pre", false)
-	//register_forward(FM_AddToFullPack, "@AddToFullPack_Post", true)
+	register_forward(FM_AddToFullPack, "@AddToFullPack_Post", true)
+
+	RegisterHookChain(RG_CBasePlayer_Spawn, "CBasePlayer_Spawn_Post", true)
+	RegisterHookChain(RG_CBasePlayer_Killed, "CBasePlayer_Killed_Post", true)
+	RegisterHookChain(RG_CSGameRules_RestartRound, "CSGameRules_RestartRound_Pre", false)
+
+	bind_pcvar_num(create_cvar("zpn_class_kicker_block_move", "1", .has_min = true, .min_val = 0.0, .has_max = true, .max_val = 1.0), cvars[CVAR_BLOCK_MOVE])
+}
+
+public plugin_cfg()
+{
+	camera_users_xvar = get_xvar_id("amx_addon_camera_users")
 }
 
 register_class()
@@ -50,12 +73,61 @@ bool:is_class(id)
 public client_putinserver(id)
 {
 	kicking[id] = false
+	kick_anim_player[id] = 0
+	kick_fake_player[id] = 0
+}
+
+public client_disconnected(id)
+{
+	stop_kick(id, false)
+}
+
+public CBasePlayer_Spawn_Post(const this)
+{
+	stop_kick(this, false)
+}
+
+public CBasePlayer_Killed_Post(const this, const attacker, const shouldgib)
+{
+	stop_kick(this, false)
+}
+
+public CSGameRules_RestartRound_Pre()
+{
+	for(new id = 1; id <= MaxClients; id++)
+		stop_kick(id, false)
+}
+
+public zpn_user_infected_pre(const this, const infector, const class_id)
+{
+	stop_kick(this, false)
+}
+
+@AddToFullPack_Post(es_handle, e, ent, host, hostflags, player, pset)
+{
+	new bool:host_using_camera = is_user_using_camera(host)
+
+	if(player)
+	{
+		if((host != ent || host_using_camera) && is_playing_kick_anim(ent))
+			set_es(es_handle, ES_Effects, get_es(es_handle, ES_Effects) | EF_NODRAW)
+
+		return FMRES_IGNORED
+	}
+
+	if(0 < host && host <= MaxClients && !host_using_camera && (kick_anim_player[host] == ent || kick_fake_player[host] == ent))
+		set_es(es_handle, ES_Effects, get_es(es_handle, ES_Effects) | EF_NODRAW)
+
+	return FMRES_IGNORED
 }
 
 @CmdStart_Pre(id, uc_handle, randseed)
 {
 	if(!is_class(id))
 		return FMRES_IGNORED
+
+	if(kicking[id] && cvars[CVAR_BLOCK_MOVE])
+		block_kick_move(id, uc_handle)
 
 	static button; button = get_uc(uc_handle, UC_Buttons)
 	static oldbutton; oldbutton = get_entvar(id, var_oldbuttons)
@@ -67,6 +139,9 @@ public client_putinserver(id)
 		return FMRES_IGNORED
 
 	kicking[id] = true
+
+	if(cvars[CVAR_BLOCK_MOVE])
+		block_kick_move(id, uc_handle)
 
 	set_entvar(id, var_viewmodel, kick)
 
@@ -89,68 +164,79 @@ public client_putinserver(id)
 
 public init_anim(id)
 {
+	remove_kick_fake_player(id)
+
+	new anim_ent = rg_create_entity("info_target")
+
+	if(is_nullent(anim_ent))
+		return
+
 	new model_ent = rg_create_entity("info_target")
 
 	if(is_nullent(model_ent))
+	{
+		rg_remove_entity(anim_ent)
 		return
+	}
 	
 	static Float:origin[3], Float:angles[3], Float:velocity[3]
 
 	get_entvar(id, var_origin, origin)
 	get_entvar(id, var_angles, angles)
 	get_entvar(id, var_velocity, velocity)
+	origin[2] += (kick_anim_floor_offset - 36.0)
 
-	static model[64]; cs_get_user_model(id, model, charsmax(model))
+	angles[0] = 0.0
+	angles[2] = 0.0
 
-	// FAKE MODEL
-	set_entvar(model_ent, var_classname, "fake_model")
+	set_entvar(anim_ent, var_classname, kick_anim_classname)
+	set_entvar(anim_ent, var_owner, id)
+	set_entvar(anim_ent, var_origin, origin)
+	set_entvar(anim_ent, var_angles, angles)
+	static Float:mins[3] = { -23.1, -21.5, -39.5 }
+	static Float:maxs[3] = { 54.4, 24.9, 28.0 }
+
+	engfunc(EngFunc_SetModel, anim_ent, kick_anim)
+	engfunc(EngFunc_SetSize, anim_ent, mins, maxs)
+
+	set_entvar(anim_ent, var_modelindex, kick_anim_index)
+	set_entvar(anim_ent, var_velocity, velocity)
+	set_entvar(anim_ent, var_movetype, MOVETYPE_TOSS)
+	set_entvar(anim_ent, var_solid, SOLID_BBOX)
+	set_entvar(anim_ent, var_rendermode, kRenderTransAlpha)
+	set_entvar(anim_ent, var_renderamt, 1.0)
+	set_entvar(anim_ent, var_nextthink, get_gametime() + anim_time)
+
+	set_ent_anim(anim_ent, 0, kick_anim_framerate, true)
+	SetThink(anim_ent, "think_kick")
+
+	static model[64], model_path[128]
+	cs_get_user_model(id, model, charsmax(model))
+	formatex(model_path, charsmax(model_path), "models/player/%s/%s.mdl", model, model)
+
+	new player_model_index = engfunc(EngFunc_ModelIndex, model_path)
+
+	if(!player_model_index)
+	{
+		rg_remove_entity(model_ent)
+		rg_remove_entity(anim_ent)
+		return
+	}
+
+	set_entvar(model_ent, var_classname, kick_fake_classname)
 	set_entvar(model_ent, var_owner, id)
 	set_entvar(model_ent, var_origin, origin)
+	set_entvar(model_ent, var_angles, angles)
 	set_entvar(model_ent, var_movetype, MOVETYPE_FOLLOW)
+	set_entvar(model_ent, var_aiment, anim_ent)
 	set_entvar(model_ent, var_solid, SOLID_NOT)
 	set_entvar(model_ent, var_body, get_entvar(id, var_body))
 	set_entvar(model_ent, var_skin, get_entvar(id, var_skin))
-	set_entvar(model_ent, var_model, fmt("models/player/%s/%s.mdl", model, model))
-	set_entvar(id, var_aiment, model_ent)
+	engfunc(EngFunc_SetModel, model_ent, model_path)
+	set_entvar(model_ent, var_modelindex, player_model_index)
 
-
-	// TERMINANDO....
-	
-	// ANIM
-	// new anim_ent = rg_create_entity("info_target")
-
-	// if(is_nullent(anim_ent))
-	// 	return
-
-	// new Float:mins[3] = { -16.0, -16.0, -36.0 }
-	// new Float:maxs[3] = { 16.0, 16.0, 36.0 }
-	// new Float:size[3]
-	// math_mins_maxs(mins, maxs, size)
-
-	// angles[0] = 0.0
-	// angles[2] = 0.0
-
-	// set_entvar(anim_ent, var_classname, "anim_kick")
-	// set_entvar(anim_ent, var_model, kick_anim)
-	// set_entvar(anim_ent, var_modelindex, kick_anim_index)
-	// set_entvar(anim_ent, var_owner, id)
-	// set_entvar(anim_ent, var_movetype, MOVETYPE_TOSS)
-	// set_entvar(anim_ent, var_solid, SOLID_NOT)
-	// set_entvar(anim_ent, var_mins, mins)
-	// set_entvar(anim_ent, var_maxs, maxs)
-	// set_entvar(anim_ent, var_size, size)
-	// set_entvar(anim_ent, var_origin, origin)
-	// set_entvar(anim_ent, var_angles, angles)
-	// set_entvar(anim_ent, var_velocity, velocity)
-	// set_entvar(model_ent, var_aiment, anim_ent)
-	
-	// set_ent_anim(anim_ent, 0, 1.5, true)
-
-	//set_entvar(anim_ent, var_nextthink, get_gametime() + anim_time)
-	//set_entvar(model_ent, var_nextthink, get_gametime() + anim_time)
-
-	//SetThink(anim_ent, "think_kick")
-	//SetThink(model_ent, "think_kick")
+	kick_anim_player[id] = anim_ent
+	kick_fake_player[id] = model_ent
 }
 
 public think_kick(const ent)
@@ -158,10 +244,16 @@ public think_kick(const ent)
 	if(is_nullent(ent))
 		return
 
-	// new id = get_entvar(ent, var_owner)
+	new id = get_entvar(ent, var_owner)
 
-	// if(is_user_connected(id))
-	// 	rg_set_user_invisibility(id, false)
+	if(0 < id && id <= MaxClients && kick_anim_player[id] == ent)
+	{
+		if(kick_fake_player[id] > 0 && !is_nullent(kick_fake_player[id]))
+			rg_remove_entity(kick_fake_player[id])
+
+		kick_anim_player[id] = 0
+		kick_fake_player[id] = 0
+	}
 	
 	rg_remove_entity(ent)
 }
@@ -173,7 +265,7 @@ public kick_knockback(id)
 	new bool:sound = false
 	get_entvar(id, var_origin, myorigin)
 	
-	for(new i = 0; i < MaxClients; i++)
+	for(new i = 1; i <= MaxClients; i++)
 	{
 		if(!is_user_alive(i))
 			continue
@@ -205,11 +297,7 @@ public kick_knockback(id)
 
 public reset_kick(id)
 {
-	if(is_user_connected(id))
-	{
-		zpn_send_weapon_deploy(id)
-		kicking[id] = false
-	}
+	stop_kick(id, true)
 }
 
 public plugin_precache()
@@ -217,7 +305,7 @@ public plugin_precache()
 	register_class()
 
 	precache_model(kick)
-	precache_model(kick_anim)
+	kick_anim_index = precache_model(kick_anim)
 	precache_sound(kick_miss)
 
 	for(new i = 0; i < sizeof(kick_hit); i++)
@@ -250,15 +338,68 @@ stock set_ent_anim(ent, anim, Float:framerate, bool:reset = false)
 		set_entvar(ent, var_frame, 0.0)
 }
 
-stock rg_set_user_invisibility(const id, bool:bToggle = true)
+stop_kick(id, bool:deploy_weapon)
 {
-	new eff = get_entvar(id,var_effects)
-	set_entvar(id, var_effects, bToggle ? (eff |= EF_NODRAW) : (eff &= ~EF_NODRAW))
+	if(!(0 < id && id <= MaxClients))
+		return
+
+	remove_task(id)
+	remove_kick_fake_player(id)
+
+	if(deploy_weapon && is_user_connected(id))
+		zpn_send_weapon_deploy(id)
+
+	kicking[id] = false
 }
 
-stock math_mins_maxs(const Float:mins[3], const Float:maxs[3], Float:size[3])
+remove_kick_fake_player(id)
 {
-	size[0] = (xs_fsign(mins[0]) * mins[0]) + maxs[0]
-	size[1] = (xs_fsign(mins[1]) * mins[1]) + maxs[1]
-	size[2] = (xs_fsign(mins[2]) * mins[2]) + maxs[2]
+	if(!(0 < id && id <= MaxClients))
+		return
+
+	if(kick_fake_player[id] > 0 && !is_nullent(kick_fake_player[id]))
+		rg_remove_entity(kick_fake_player[id])
+
+	if(kick_anim_player[id] > 0 && !is_nullent(kick_anim_player[id]))
+		rg_remove_entity(kick_anim_player[id])
+
+	kick_anim_player[id] = 0
+	kick_fake_player[id] = 0
+}
+
+bool:is_playing_kick_anim(id)
+{
+	if(!(0 < id && id <= MaxClients))
+		return false
+
+	return (kicking[id] && kick_anim_player[id] > 0 && !is_nullent(kick_anim_player[id]) && kick_fake_player[id] > 0 && !is_nullent(kick_fake_player[id]))
+}
+
+bool:is_user_using_camera(id)
+{
+	if(!(0 < id && id <= MaxClients) || camera_users_xvar == -1)
+		return false
+
+	return (get_xvar_num(camera_users_xvar) & (1 << (id - 1))) ? true : false
+}
+
+block_kick_move(id, uc_handle)
+{
+	new buttons = get_uc(uc_handle, UC_Buttons)
+	buttons &= ~(IN_FORWARD | IN_BACK | IN_MOVELEFT | IN_MOVERIGHT | IN_JUMP | IN_DUCK)
+
+	set_uc(uc_handle, UC_Buttons, buttons)
+	set_uc(uc_handle, UC_ForwardMove, 0.0)
+	set_uc(uc_handle, UC_SideMove, 0.0)
+	set_uc(uc_handle, UC_UpMove, 0.0)
+
+	static Float:velocity[3]
+	get_entvar(id, var_velocity, velocity)
+	velocity[0] = 0.0
+	velocity[1] = 0.0
+
+	if(get_entvar(id, var_flags) & FL_ONGROUND)
+		velocity[2] = 0.0
+
+	set_entvar(id, var_velocity, velocity)
 }
